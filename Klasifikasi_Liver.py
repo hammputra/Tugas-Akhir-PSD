@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 # Load dataset
 @st.cache_data
 def load_data():
-    data = pd.read_csv('Indian Liver Patient dataset (ILPD).csv')
+    data = pd.read_csv('Liver.csv')
     return data
 
 # Preprocessing
