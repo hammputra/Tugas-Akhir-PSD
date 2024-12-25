@@ -13,7 +13,6 @@ from imblearn.over_sampling import SMOTE
 from collections import Counter
 import streamlit as st
 import seaborn as sns
-# import matplotlib.pyplot as plt
 import matplotlib.pyplot as plt
 
 # Load dataset
@@ -52,11 +51,11 @@ def preprocess_data(data):
     return data_imputed, X_resampled, y_resampled
 
 @st.cache_data
-def train_model(X, y, model_type='naive_bayes'):
+def train_model(X, y, model_type='naive_bayes', test_size=0.1):
 
 
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-    
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42)
+
     if model_type == 'naive_bayes':
         model = GaussianNB()
     elif model_type == 'knn':
@@ -89,9 +88,42 @@ def main():
         "Pilih Halaman:",
         ["Tampilan Data", "Preprocessing", "Training Model", "Evaluasi Model", "Prediksi"]
     )
+        # Dropdown for data split ratio
+    split_ratio = st.sidebar.selectbox(
+        "Pilih Rasio Data Split:",
+        ["90-10", "80-20", "70-30"],
+        index=0
+    )
+
+    # Convert selected split ratio to test_size
+    test_size_map = {"90-10": 0.1, "80-20": 0.2, "70-30": 0.3}
+    test_size = test_size_map[split_ratio]
+
+    # Dropdown for SMOTE
+    if "use_smote" not in st.session_state:
+        st.session_state.use_smote = "Ya"
+
+    st.session_state.use_smote = st.sidebar.selectbox(
+        "Gunakan SMOTE untuk Penanganan Data Tidak Seimbang?",
+        ["Ya", "Tidak"],
+        index=0 if st.session_state.use_smote == "Ya" else 1
+    )
 
     # Load dataset
     data = load_data()
+
+    # Tentukan data berdasarkan pilihan SMOTE
+    data_preprocessed, X_resampled, y_resampled = preprocess_data(data)
+    if st.session_state.use_smote == "Ya":
+        X_to_use, y_to_use = X_resampled, y_resampled
+        st.sidebar.write("**Menggunakan data dengan SMOTE.**")
+    else:
+        scaler = MinMaxScaler()
+        X_normalized = pd.DataFrame(scaler.fit_transform(data_preprocessed.drop(columns=['is_patient'])),
+                                    columns=data_preprocessed.drop(columns=['is_patient']).columns)
+        y = data_preprocessed['is_patient']
+        X_to_use, y_to_use = X_normalized, y
+        st.sidebar.write("**Menggunakan data asli tanpa SMOTE.**")
 
     # Tampilan Data
     if options == "Tampilan Data":
@@ -140,6 +172,7 @@ def main():
     elif options == "Preprocessing":
         st.title("Preprocessing Data")
         st.write("Proses preprocessing mencakup beberapa langkah berikut:")
+
 
         st.subheader("1. Penanganan Missing Value")
         st.write("Langkah pertama adalah mengisi Missing value dengan strategi yang sesuai. Pada dataset ini, nilai kosong diisi dengan nilai yang paling sering muncul (*most frequent*).")
@@ -200,15 +233,15 @@ def main():
         # Handling imbalance dengan SMOTE
         st.subheader("6. Penanganan Data Tidak Seimbang dengan SMOTE")
         st.write("Dataset yang tidak seimbang (jumlah kelas target yang tidak proporsional) dapat memengaruhi performa model. SMOTE digunakan untuk menyeimbangkan data.")
-        st.subheader("Distribusi Kelas Sebelum SMOTE")
-        before_counts = pd.DataFrame.from_dict(Counter(y), orient='index', columns=['Jumlah'])
-        before_counts.index.name = 'Kelas'
-        st.write("Distribusi kelas sebelum SMOTE:")
-        st.table(before_counts)
-        smote = SMOTE(random_state=42)
-        X_resampled, y_resampled = smote.fit_resample(X_normalized, y)
-        st.write("Distribusi data setelah SMOTE:")
-        st.write(pd.DataFrame.from_dict(Counter(y_resampled), orient='index', columns=['Jumlah']))
+        st.dataframe(X_to_use.head())
+
+        st.subheader("Distribusi Kelas:")
+        st.write("Sebelum SMOTE:")
+        st.write(pd.DataFrame.from_dict(Counter(data_preprocessed['is_patient']), orient='index', columns=['Jumlah']))
+
+        if st.session_state.use_smote == "Ya":
+            st.write("Setelah SMOTE:")
+            st.write(pd.DataFrame.from_dict(Counter(y_resampled), orient='index', columns=['Jumlah']))
 
         st.write("Fitur setelah preprocessing lengkap:")
         st.dataframe(X_resampled.reset_index(drop=True), height=450)
@@ -254,7 +287,7 @@ def main():
 
         # Train Naive Bayes
         st.subheader("1. Naive Bayes")
-        nb_model, X_test, y_test, y_pred_nb = train_model(X_resampled, y_resampled, model_type='naive_bayes')
+        nb_model, X_test, y_test, y_pred_nb = train_model(X_to_use, y_to_use, model_type='naive_bayes',test_size=test_size)
 
         # Naive Bayes Calculation
         st.write("**Proses Perhitungan Naive Bayes:**")
@@ -277,7 +310,7 @@ def main():
 
         # Train KNN
         st.subheader("2. K-Nearest Neighbors (KNN)")
-        knn_model, _, _, y_pred_knn = train_model(X_resampled, y_resampled, model_type='knn')
+        knn_model, _, _, y_pred_knn = train_model(X_to_use, y_to_use, model_type='knn',test_size=test_size)
 
         # KNN Calculation
         st.write("**Proses Perhitungan KNN:**")
@@ -302,7 +335,7 @@ def main():
 
         # Train Logistic Regression
         st.subheader("3. Logistic Regression")
-        lr_model, _, _, y_pred_lr = train_model(X_resampled, y_resampled, model_type='logistic_regression')
+        lr_model, _, _, y_pred_lr = train_model(X_to_use, y_to_use, model_type='logistic_regression',test_size=test_size)
 
     # Logistic Regression Calculation
         st.write("**Proses Perhitungan Logistic Regression:**")
